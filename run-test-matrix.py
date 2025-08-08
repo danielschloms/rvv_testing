@@ -48,7 +48,10 @@ def build_rtl(
     arch: str, vlen: int, vlane_width: int, print_stderr: bool = False
 ) -> bool:
     fname = "build_rtl"
-    info(fname, f"Building RTL model for arch {arch}, VLEN {vlen}, VLANE_WIDTH {vlane_width}")
+    info(
+        fname,
+        f"Building RTL model for arch {arch}, VLEN {vlen}, VLANE_WIDTH {vlane_width}",
+    )
     if vlen not in VALID_VLENS:
         error(fname, f"Illegal VLEN {vlen}")
     if arch not in VALID_ARCHS:
@@ -65,7 +68,7 @@ def build_rtl(
         "vlane",
         str(vlane_width),
     ]
-    proc = subprocess.run(args=build_args, capture_output=True)
+    proc = subprocess.run(args=build_args, capture_output=True, encoding="utf-8")
     if proc.stderr:
         stderr_out = f"\n{proc.stderr}" if print_stderr else ""
         error(fname, f"Process returned stderr{stderr_out}")
@@ -109,7 +112,7 @@ def build_test(arch: str, vlen: int, print_stderr: bool = False) -> bool:
         "arch",
         arch,
     ]
-    proc = subprocess.run(args=build_args, capture_output=True)
+    proc = subprocess.run(args=build_args, capture_output=True, encoding="utf-8")
     if proc.stderr:
         stderr_out = f"\n{proc.stderr}" if config.PRINT_STDERR else ""
         error(fname, f"Process returned stderr{stderr_out}")
