@@ -111,8 +111,10 @@ def build_test(arch: str, vlen: int, print_stderr: bool = False) -> bool:
     ]
     proc = subprocess.run(args=build_args, capture_output=True)
     if proc.stderr:
-        stderr_out = f"\n{proc.stderr}" if print_stderr else ""
+        stderr_out = f"\n{proc.stderr}" if config.PRINT_STDERR else ""
         error(fname, f"Process returned stderr{stderr_out}")
+        if config.STOP_ON_COMPILATION_ERROR:
+            exit(1)
         return False
     success(fname, "Success")
     return True
