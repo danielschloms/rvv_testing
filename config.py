@@ -15,3 +15,6 @@ RUN_ALL = RUN_INT + RUN_FLOAT
 TEST_CONFIG = {
     "rv32im_zve32x": {"vlens": [64, 128, 256, 512, 1024], "vlane_widths": [32]}
 }
+
+STOP_ON_COMPILATION_ERROR = True
+PRINT_STDERR = True
