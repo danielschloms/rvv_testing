@@ -13,6 +13,10 @@ class TerminalColors:
     UNDERLINE = "\033[4m"
 
 
+def yellow(val_or_string) -> str:
+    return TerminalColors.WARNING + str(val_or_string) + TerminalColors.ENDC
+
+
 def blue(val_or_string) -> str:
     return TerminalColors.OKBLUE + str(val_or_string) + TerminalColors.ENDC
 
@@ -31,6 +35,10 @@ def bold(val_or_string) -> str:
 
 def error(source: str, msg: str) -> None:
     print(f"({red(source)}): {msg}")
+
+
+def warn(source: str, msg: str) -> None:
+    print(f"({yellow(source)}): {msg}")
 
 
 def success(source: str, msg: str) -> None:
