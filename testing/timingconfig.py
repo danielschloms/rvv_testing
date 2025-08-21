@@ -1,5 +1,3 @@
-V_DISP_NAME = "V_DISP_stage"
-
 INT_ARITH_VMV = ["vmv_v_v", "vmv_v_x", "vmv_v_i"]
 INT_ARITH_VMERGE = ["vmerge_vvm", "vmerge_vxm", "vmerge_vim"]
 INT_EXT = ["vsext_vf2", "vsext_vf4", "vsext_vf8", "vzext_vf2", "vzext_vf4", "vzext_vf8"]

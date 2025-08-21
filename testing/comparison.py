@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 
-import numpy as np
-import sys
-from difflib import SequenceMatcher
-import decoder
 import csv
 import os
-import re
 import pathlib
+import re
+import sys
+from difflib import SequenceMatcher
 
-from util import red, blue, bold
-from config import V_SHORT_SIGNAL, V_DISP_NAME
+import decoder
+import numpy as np
+from timingconfig import V_SHORT_SIGNAL
+from util import blue, bold, check_path
 
 ARCH: str
 VLEN: int
 VLANE_WIDTH: int
 TARGET_SW: str
 
-SCRIPT_PATH = pathlib.Path(__file__).parent
+COMPARISON_DIR = pathlib.Path(__file__).parent.parent / "comparison"
+check_path(COMPARISON_DIR)
 
 # vset(i)vl(i) retires after ID
 VSET_INSTRS = ["vsetvl", "vsetvli", "vsetivli"]
@@ -36,7 +37,7 @@ TRACK_STAGES = [
     "ID_stage",
     "EX_stage",
     "WB_stage",
-    V_DISP_NAME,
+    "V_DISP_stage",
     "V_EX_stage",
     "V_WB_stage",
     "V_RES_stage",
@@ -47,7 +48,7 @@ TRACK_STAGES = [
 PRINT_STAGES = [
     "ID_stage",
     "EX_stage",
-    V_DISP_NAME,
+    "V_DISP_stage",
     "V_EX_stage",
     "V_WB_stage",
     "V_RES_stage",
@@ -59,43 +60,37 @@ MAX_STAGE_NAME_LEN = len(max(PRINT_STAGES, key=len))
 START_LABEL = "address_match_start"
 END_LABEL = "address_match_end"
 
-VERILATOR_BUILD_DIR = (
-    f"{os.environ["WS_PATH"]}/vicuna2_tinyml_benchmarking/build_from_other"
-)
-VERILATOR_GROUPS = ["vector", "ml_bench/Int8/aww", "ml_bench/Int8/toycar"]
+VERILATOR_GROUPS = ["vector", "ml_bench"]
 
 ETISS_DUMP_DIR = (
-    f"{os.environ["WS_PATH"]}/gen_perfsim/TARGET_SW/examples/Vicuna/custom/dump"
+    f"{os.environ["WS_PATH"]}/gen_perfsim/target_sw/examples/Vicuna/custom/dump"
 )
 
 STAGE_IN_COL = True
 
 
-def read_addresses(TARGET_SW: str) -> dict:
+def read_addresses(
+    target_sw: str, verilator_dump_dir: pathlib.Path, etiss_dump_dir: pathlib.Path
+) -> dict:
     """Returns a dictionary with start and end addresses."""
     verilator_start = 0
     verilator_end = 0
     etiss_start = 0
     etiss_end = 0
 
-    for group in VERILATOR_GROUPS:
-        verilator_dump_file = f"{VERILATOR_BUILD_DIR}/{group}/{TARGET_SW}_dump.txt"
-        try:
-            print(f"(AddressMatcher) Trying {group}")
-            with open(verilator_dump_file) as verilator_dump:
-                for line in verilator_dump:
-                    if f"<{START_LABEL}>:" in line:
-                        verilator_start = int(line.split(" ")[0], 16)
-                    if f"<{END_LABEL}>:" in line:
-                        verilator_end = int(line.split(" ")[0], 16)
+    verilator_dump_file = f"{verilator_dump_dir}/{target_sw}_dump.txt"
+    try:
+        with open(verilator_dump_file, "r", encoding="utf-8") as verilator_dump:
+            for line in verilator_dump:
+                if f"<{START_LABEL}>:" in line:
+                    verilator_start = int(line.split(" ")[0], 16)
+                if f"<{END_LABEL}>:" in line:
+                    verilator_end = int(line.split(" ")[0], 16)
+    except:
+        print(f"(AddressMatcher) Could not find {target_sw} Verilator dump")
+        pass
 
-            break
-
-        except:
-            print(f"(AddressMatcher) Could not find {TARGET_SW} in {group}.")
-            pass
-
-    etiss_dump_file = f"{ETISS_DUMP_DIR}/{TARGET_SW}.dump"
+    etiss_dump_file = f"{etiss_dump_dir}/{target_sw}.dump"
     with open(etiss_dump_file) as etiss_dump:
         for line in etiss_dump:
             if f"<{START_LABEL}>:" in line:
@@ -125,7 +120,7 @@ def match_length(a: list, b: list, value) -> None:
 
 
 def write_out(
-    outfile_path,
+    outfile_path: pathlib.Path,
     matching: list[str],
     initial: list[str] | None = None,
     trailing: list[str] | None = None,
@@ -240,7 +235,7 @@ def read_traces(etiss_base_path, verilator_base_path, addrs) -> tuple[dict, dict
 
     etiss_trace_path = etiss_base_path / f"{TARGET_SW}_trace.txt"
     etiss_transformed_trace_path = etiss_base_path / f"{TARGET_SW}_trace_t.txt"
-    etiss_timing_path = (etiss_base_path / f"{TARGET_SW}_timing.csv",)
+    etiss_timing_path = etiss_base_path / f"{TARGET_SW}_timing.csv"
 
     verilator = read_verilator_trace(
         verilator_base_path, addrs["v_start"], addrs["v_end"]
@@ -300,39 +295,40 @@ def read_traces(etiss_base_path, verilator_base_path, addrs) -> tuple[dict, dict
     ) as etiss_transformed_trace:
 
         etiss = {
-            "asm": [],
-            "instrs": [],
+            "asm": [0x0],
+            "instrs": ["auipc"],
             "delta": [],
             "stage_cycles": {name: [] for name in TRACK_STAGES},
             "cycles": 0,
             "start": 0,
             "end": 0,
-            "pc": [],
+            "pc": ["0x00000000"],
         }
 
-        etiss_index = 0
+        # TODO: adding trace argument to perf run script skips first auipc
+        etiss_index = 1
         for line in etiss_trace:
             split_line = line.split(" ")
             if len(line) > 3:
-                pc = int(split_line[0][2:].lstrip("0")[:-1], base=16)
+                pc = int(split_line[0][2:].lstrip("0"), base=16)
                 if pc == addrs["e_start"]:
                     print(f"(AddressMatcher) Matched ETISS start: {etiss_index}")
                     etiss["start"] = etiss_index
                 if pc == addrs["e_end"]:
                     print(f"(AddressMatcher) Matched ETISS end: {etiss_index}")
                     etiss["end"] = etiss_index
-                etiss["asm"].append(int(split_line[3], 2))
-                etiss["instrs"].append(split_line[1])
+                etiss["asm"].append(int(split_line[4], 2))
+                etiss["instrs"].append(split_line[2])
                 etiss["pc"].append(split_line[0][2:])
-                hex_asm = f"{int(split_line[3], 2):08x}"
-                split_line[3] = hex_asm
+                hex_asm = f"{int(split_line[4], 2):08x}"
+                split_line[4] = hex_asm
                 etiss_transformed_trace.write(" ".join(split_line))
 
                 etiss_index += 1
             else:
                 print(line)
 
-    with open(etiss_timing_path) as etiss_timing:
+    with open(etiss_timing_path, "r", encoding="utf-8") as etiss_timing:
         reader = csv.reader(etiss_timing)
         previous = 0
         index = 0
@@ -383,16 +379,39 @@ def usage() -> None:
     exit(1)
 
 
-def main() -> None:
-
-    if len(sys.argv) < 5:
-        usage()
+def compare(arch, vlen, vlane_width, target_sw) -> None:
 
     global ARCH, VLEN, VLANE_WIDTH, TARGET_SW
-    ARCH = sys.argv[1]
-    VLEN = int(sys.argv[2])
-    VLANE_WIDTH = int(sys.argv[3])
-    ARCH = sys.argv[4]
+
+    ARCH = arch
+    VLEN = vlen
+    VLANE_WIDTH = vlane_width
+    TARGET_SW = target_sw
+
+    zvl_string = f"zvl{vlen}b"
+    vlane_string = f"vlane{vlane_width}"
+    full_arch_subpath = pathlib.Path(arch) / zvl_string / vlane_string
+    verilator_dump_dir = (
+        pathlib.Path(os.environ["WS_PATH"])
+        / "vicuna2_tinyml_benchmarking"
+        / "build_from_other"
+        / arch
+        / zvl_string
+        / "dump"
+    )
+    etiss_dump_dir = (
+        pathlib.Path(os.environ["WS_PATH"])
+        / "gen_perfsim"
+        / "target_sw"
+        / "examples"
+        / "Vicuna"
+        / "custom"
+        / arch
+        / zvl_string
+        / "dump"
+    )
+    check_path(verilator_dump_dir)
+    check_path(etiss_dump_dir)
 
     print(blue(bold(f"Analyzing {TARGET_SW}")))
     write_trailing = False
@@ -402,12 +421,14 @@ def main() -> None:
     if "-i" in sys.argv:
         write_initial = True
 
-    etiss_arch_path = SCRIPT_PATH / "etiss" / ARCH / VLEN / VLANE_WIDTH
-    verilator_arch_path = SCRIPT_PATH / "verilator" / ARCH / VLEN / VLANE_WIDTH
+    etiss_arch_path = COMPARISON_DIR / "etiss" / full_arch_subpath
+    verilator_arch_path = COMPARISON_DIR / "verilator" / full_arch_subpath
+    check_path(etiss_arch_path)
+    check_path(verilator_arch_path)
     etiss, verilator = read_traces(
         etiss_arch_path,
         verilator_arch_path,
-        read_addresses(TARGET_SW),
+        read_addresses(target_sw, verilator_dump_dir, etiss_dump_dir),
     )
 
     # longest_match = SequenceMatcher(
@@ -568,15 +589,25 @@ def main() -> None:
             )
         ]
 
+    # TODO
     etiss_cycles = (
         etiss["stage_cycles"]["WB_stage"][match_end_etiss - 1]
         - etiss["stage_cycles"]["WB_stage"][match_start_etiss],
-        etiss["stage_cycles"][V_DISP_NAME][match_end_etiss - 1]
-        - etiss["stage_cycles"][V_DISP_NAME][match_start_etiss],
+        etiss["stage_cycles"]["V_DISP_stage"][match_end_etiss - 1]
+        - etiss["stage_cycles"]["V_DISP_stage"][match_start_etiss],
     )
 
+    outfile_path: pathlib.Path = (
+        COMPARISON_DIR
+        / "match"
+        / ARCH
+        / f"zvl{VLEN}b"
+        / f"vlane{VLANE_WIDTH}"
+        / f"match_{TARGET_SW}.txt"
+    )
+    outfile_path.parent.mkdir(parents=True, exist_ok=True)
     write_out(
-        f"match_{TARGET_SW}.txt",
+        outfile_path,
         matching,
         initial,
         trailing,
@@ -587,4 +618,13 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+
+    if len(sys.argv) < 5:
+        usage()
+
+    arch = sys.argv[1]
+    vlen = int(sys.argv[2])
+    vlane_width = int(sys.argv[3])
+    target_sw = sys.argv[4]
+
+    compare(arch, vlen, vlane_width, target_sw)
