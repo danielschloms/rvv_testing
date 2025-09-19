@@ -29,20 +29,23 @@ VERILATOR_INTERRUPT_STRING = "Interrupt Called"
 WS_PATH_ENV_NAME = "WS_PATH"
 WS_PATH_ENV = os.getenv(WS_PATH_ENV_NAME)
 if not WS_PATH_ENV:
-    print(f'Environment Variable "{WS_PATH_ENV_NAME}" not set')
+    error(__name__, f'Environment Variable "{WS_PATH_ENV_NAME}" not set')
     exit()
 
 WS_PATH = pathlib.Path(WS_PATH_ENV)
 PERFSIM_PRJ_SRC = WS_PATH / "gen_perfsim"
 VERILATOR_PRJ_SRC = WS_PATH / "vicuna2_tinyml_benchmarking"
-TEST_PRJ_SRC = WS_PATH / "riscv_programs"
+TEST_PRJ_SRC = WS_PATH / "etiss_riscv_examples"
+TABLE_DIR = WS_PATH / "rvv_testing" / "comparison" / "table"
 check_path(WS_PATH)
 check_path(VERILATOR_PRJ_SRC)
 check_path(TEST_PRJ_SRC)
 check_path(PERFSIM_PRJ_SRC)
-print(f"Perfsim Project Source: {PERFSIM_PRJ_SRC}")
-print(f"Verilator Project Source: {VERILATOR_PRJ_SRC}")
-print(f"Test Project Source: {TEST_PRJ_SRC}")
+check_path(TABLE_DIR)
+info(__name__, f"Perfsim Project Source: {PERFSIM_PRJ_SRC}")
+info(__name__, f"Verilator Project Source: {VERILATOR_PRJ_SRC}")
+info(__name__, f"Test Project Source: {TEST_PRJ_SRC}")
+info(__name__, f"Table Directory: {TABLE_DIR}")
 
 VALID_VLENS = [64, 128, 256, 512, 1024]
 VALID_ARCHS = ["rv32im_zve32x", "rv32imf_zve32f"]
@@ -84,7 +87,7 @@ SANITY_CHECK = ["basic_asm", "cpptest"]
 PROGRAMS = ["toycar_int8"]
 
 
-def build_rtl(arch: str, vlen: int, vlane_width: int, clean_rtl: bool) -> bool:
+def build_rtl(arch: str, vlen: int, vlane_width: int, optargs: list[str]) -> bool:
     fname = "build_rtl"
     info(
         fname,
@@ -99,13 +102,16 @@ def build_rtl(arch: str, vlen: int, vlane_width: int, clean_rtl: bool) -> bool:
     build_script = VERILATOR_PRJ_SRC / build_script_name
     build_args = [
         build_script,
-        "vlen",
+        "--vlen",
         str(vlen),
-        "arch",
+        "--arch",
         arch,
-        "vlane",
+        "--vlane_width",
         str(vlane_width),
     ]
+
+    build_args += optargs
+
     proc = subprocess.run(args=build_args, capture_output=True, encoding="utf-8")
     if proc.stderr:
         stderr_out = f"\n{proc.stderr}" if config.PRINT_STDERR else ""
@@ -115,7 +121,7 @@ def build_rtl(arch: str, vlen: int, vlane_width: int, clean_rtl: bool) -> bool:
     return True
 
 
-def build_rtl_list(test_config: dict, clean_rtl: bool) -> bool:
+def build_rtl_list(test_config: dict, optargs: list[str]) -> bool:
     info("build_rtl_list", "Building RTL models")
     all_successful = True
     archs = test_config.keys()
@@ -129,7 +135,7 @@ def build_rtl_list(test_config: dict, clean_rtl: bool) -> bool:
                 if vlane_width not in VLANE_WIDTH_COMBINATIONS[vlen]:
                     # Skip illegal VLEN / VLANE_W combinations
                     continue
-                if not build_rtl(arch, vlen, vlane_width, clean_rtl):
+                if not build_rtl(arch, vlen, vlane_width, optargs):
                     all_successful = False
 
     return all_successful
@@ -139,11 +145,10 @@ def build_test(
     arch: str,
     abi: str,
     vlen: int,
-    build_ml_tests: bool,
-    build_vector_tests: bool,
-    clean_tests: bool,
     build_type: BuildType,
-    compiler: str = "gcc",
+    compiler: str,
+    target: str,
+    optargs: list[str],
 ) -> bool:
     fname = "build_test"
     info(
@@ -157,7 +162,7 @@ def build_test(
     if compiler not in ["gcc", "llvm"]:
         error(fname, f"Invalid compiler {compiler}")
 
-    build_script_name = "etiss-build.sh"
+    build_script_name = "build.sh"
     build_script = TEST_PRJ_SRC / build_script_name
     build_args = [
         build_script,
@@ -167,18 +172,13 @@ def build_test(
         abi,
         "--vlen",
         str(vlen),
-        f"--{compiler}",
+        "--compiler",
+        compiler,
+        "--target",
+        target,
     ]
 
-    if build_ml_tests:
-        build_args.append("--ml")
-    if build_vector_tests:
-        build_args.append("--vector")
-    if clean_tests:
-        build_args.append("--clean")
-
-    if build_type != BuildType.release:
-        build_args.append(build_type)
+    build_args += optargs
 
     proc = subprocess.run(args=build_args, capture_output=True, encoding="utf-8")
     if config.PRINT_BUILD_STDOUT and proc.stdout:
@@ -195,7 +195,11 @@ def build_test(
 
 
 def build_all_tests(
-    test_config: dict, clean_tests: bool, build_type: BuildType, compiler: str = "gcc"
+    test_config: dict,
+    build_type: BuildType,
+    compiler: str,
+    build_target: str,
+    optargs: list[str],
 ) -> bool:
     info("build_all_tests", "Building tests")
     all_successful = True
@@ -205,20 +209,10 @@ def build_all_tests(
         if test_config[arch]["skip"]:
             continue
         vlens = test_config[arch]["vlens"]
-        build_ml_tests = test_config[arch]["build_ml_tests"]
-        build_vector_tests = test_config[arch]["build_vector_tests"]
         for vlen in vlens:
-            if not build_test(
-                arch,
-                abi,
-                vlen,
-                build_ml_tests,
-                build_vector_tests,
-                clean_tests,
-                build_type,
-                compiler,
-            ):
-                all_successful = False
+            all_successful &= build_test(
+                arch, abi, vlen, build_type, compiler, build_target, optargs
+            )
 
     return all_successful
 
@@ -324,19 +318,46 @@ def run_all(
 
     return False if False in res else True
 
+def compare_all(argslist: list[tuple[str, int, int, str]], gen_table: bool) -> bool:
+    ok = True
+    results = []
+    fname = "compare_all"
 
-def run_comparison(
-    arch: str, vlen: int, vlane_width: int, target: str
-) -> tuple[bool, float]:
-    compare(arch, vlen, vlane_width, target)
-    return (False, 1.0)
-
-
-def compare_all(argslist: list[tuple[str, int, int, str]]) -> bool:
     for args in argslist:
         arch, vlen, vlane_width, target = args
-        run_comparison(arch, vlen, vlane_width, target)
-    return True
+        # Returns CPI ETISS, CPI Verilator, CPI Error in %, Abs sum of differences, OK
+        info(fname, f"Compare {target} on {arch} with VLEN {vlen} and VLANE_WIDTH {vlane_width}")
+        cpi_e, cpi_v, cpi_error, abs_sum_diffs, n_instructions, ok_run = compare(arch, vlen, vlane_width, target)
+        if ok_run:
+            success(fname, f"Comparison results: CPI ETISS {cpi_e:.4f} | CPI RTL {cpi_v:.4f} | Error {cpi_error:.4f}% | ASD {abs_sum_diffs} | ADI {abs_sum_diffs / n_instructions:.4f}")
+        else:
+            error(fname, "Comparison failed")
+        if "_" in target:
+            target = target.replace("_", "\\_")
+        if "_" in arch:
+            arch = arch.replace("_", "\\_")
+        avg_diff_per_instruction = abs_sum_diffs / n_instructions
+        results.append((target, arch, vlen, vlane_width, cpi_e, cpi_v, cpi_error, avg_diff_per_instruction))
+        ok &= ok_run
+
+    if gen_table:
+        info(fname, "Generate table")
+        with open(TABLE_DIR / "table.tex", "w", encoding="utf-8") as table_file:
+            table_file.write("\\begin{center}\n")
+            table_file.write("\\begin{tabular}{ c c c c c c c }\n")
+            table_file.write(
+                "Target & VLEN & VLANE\\_WIDTH & CPI ETISS & CPI Verilator & Error & Avg. Diff. per Instr."
+            )
+            for result in results:
+                r_target, r_arch, r_vlen, r_vlane_width, r_cpi_e, r_cpi_v, r_error, r_avg_diff_per_inst = (
+                    result
+                )
+                table_file.write(
+                    f" \\\\\n{r_target} & {r_vlen} & {r_vlane_width} & {r_cpi_e:.4f} & {r_cpi_v:.4f} & {r_error:.4f} \\% & {r_avg_diff_per_inst}"
+                )
+            table_file.write("\n\\end{tabular}\n\\end{center}\n")
+
+    return ok
 
 
 def gen_argslist(test_config: dict) -> list[tuple[str, int, int, str]]:
@@ -369,6 +390,7 @@ def main() -> None:
     parser.add_argument("-a", "--all", action="store_true")
     parser.add_argument("-r", "--build_rtl", action="store_true")
     parser.add_argument("-t", "--build_tests", action="store_true")
+    parser.add_argument("-gt", "--generate_table", action="store_true")
     parser.add_argument("-cmp", "--compare", action="store_true")
     # parser.add_argument("-j") # TODO: specify number of processes
     # Clean RTL does nothing ATM
@@ -386,6 +408,12 @@ def main() -> None:
     mutex_build_type_group.add_argument("-reldeb", "--reldeb", action="store_true")
 
     parser.add_argument("--compiler", type=str, required=False)
+    parser.add_argument("--trace", action="store_true")
+
+    # CMake build target
+    parser.add_argument("--ctarget", type=str, required=False)
+    # Actual program
+    parser.add_argument("--target", type=str, required=False)
 
     args = parser.parse_args()
 
@@ -394,8 +422,22 @@ def main() -> None:
 
     if args.run_etiss or args.run_both:
         run_etiss = True
-    elif args.run_verilator or args.run_both:
+    if args.run_verilator or args.run_both:
         run_verilator = True
+
+    build_target = "all"
+    optargs_build = []
+    optargs_rtl = []
+
+    # Build optional arguments
+    if args.clean_tests:
+        optargs_build.append("--clean")
+
+    # Verilator build optional arguments
+    if args.trace:
+        optargs_rtl.append("--trace")
+    if args.clean_rtl:
+        optargs_rtl.append("--clean")
 
     test_config = config.TEST_CONFIG
     if args.all:
@@ -416,10 +458,19 @@ def main() -> None:
             for arch in VALID_ARCHS
         }
 
+    if args.ctarget:
+        for arch in test_config.values():
+            arch["targets"] = config.CUSTOM_TARGETS[args.ctarget]
+        build_target = args.ctarget
+    if args.target:
+        for arch in test_config.values():
+            arch["targets"] = [args.target]
+        build_target = args.target
+
     argslist = gen_argslist(test_config)
 
     if args.build_rtl:
-        build_rtl_list(test_config, args.clean_rtl)
+        build_rtl_list(test_config, optargs_rtl)
 
     if args.build_tests:
         build_type = BuildType.release
@@ -430,7 +481,9 @@ def main() -> None:
             build_type = BuildType.reldeb
         if args.debug:
             build_type = BuildType.debug
-        build_all_tests(test_config, args.clean_tests, BuildType(build_type), compiler)
+        build_all_tests(
+            test_config, BuildType(build_type), compiler, build_target, optargs_build
+        )
 
     if run_etiss or run_verilator:
         if run_all(test_config, run_etiss, run_verilator, 16):
@@ -439,7 +492,7 @@ def main() -> None:
             warn(fname, "Warning: Failing tests")
 
     if args.compare:
-        if compare_all(argslist):
+        if compare_all(argslist, args.generate_table):
             success(fname, "All comparisons correct")
         else:
             warn(fname, "Warning: comparison errors")

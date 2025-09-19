@@ -1,3 +1,37 @@
+# Instructions that signal completion after the V-Execute stage
+
+RED_VV = [
+    "vredsum_vs",
+    "vredmaxu_vs",
+    "vredmax_vs",
+    "vredminu_vs",
+    "vredmin_vs",
+    "vredand_vs",
+    "vredor_vs",
+    "vredxor_vs",
+]
+
+ELEM_VV = [
+    "vcompress_vm",
+]
+
+LSU = [
+    "vle32_v",
+    "vle16_v",
+    "vle8_v",
+    "vse32_u",
+    "vse16_u",
+    "vse8_u",
+    "vsr_v",
+    "vl8r_v",
+    "vl16r_v",
+    "vl32r_v",
+]
+
+V_LONG_SIGNAL = LSU + ELEM_VV
+
+V_MOVE_TO_SCALAR = ["vmv_x_s"]
+
 INT_ARITH_VMV = ["vmv_v_v", "vmv_v_x", "vmv_v_i"]
 INT_ARITH_VMERGE = ["vmerge_vvm", "vmerge_vxm", "vmerge_vim"]
 INT_EXT = ["vsext_vf2", "vsext_vf4", "vsext_vf8", "vzext_vf2", "vzext_vf4", "vzext_vf8"]
@@ -164,13 +198,19 @@ INT_ARITH_VI = [
     "vslidedown_vi",
 ]
 
-ELEM_VV = [
-  "vcompress_vm"
-]
-
 V_SHORT_SIGNAL = (
-    INT_ARITH_VV + INT_ARITH_VX + INT_ARITH_VI + INT_ARITH_VMV + INT_ARITH_VMERGE + INT_EXT + ELEM_VV
+    INT_ARITH_VV
+    + INT_ARITH_VX
+    + INT_ARITH_VI
+    + INT_ARITH_VMV
+    + INT_ARITH_VMERGE
+    + INT_EXT
+    + RED_VV
+    + V_MOVE_TO_SCALAR
+    + ["vmv_s_x"]
 )
+
+# V_RESULT_SIGNAL = V_MOVE_TO_SCALAR
 
 # INT_REDUCE = [
 #     "vrgather_vv",

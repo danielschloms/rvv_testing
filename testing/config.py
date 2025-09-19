@@ -1,4 +1,4 @@
-VALID_VLENS = [64, 256, 1024]
+VALID_VLENS = [64, 128, 256]
 VALID_VLANE_WIDTHS = [32, 128, 512]
 
 ML_INT = ["toycar_int8", "aww_int8"]
@@ -10,9 +10,15 @@ PROGRAMS_FP = [] + ML_FLOAT
 REQ_VECTOR_FP = []
 
 # Change this to the array of tests you want to use
-USE_TESTS = ["toycar_int8"]
-USE_VLENS = [64]
+USE_TESTS = ["rvv_asm_bench"]
+USE_VLENS = [64, 128, 256]
 USE_VLANE_WIDTHS = [32]
+
+CUSTOM_TARGETS = {
+    "sanitycheck": ["basic_asm", "loadstores"],
+    "ml_bench": ["tflm_toy", "tflm_aww"],
+    "simple_bench": ["rvv_asm_bench"],
+}
 
 TEST_CONFIG = {
     "rv32im_zicsr": {
@@ -32,7 +38,7 @@ TEST_CONFIG = {
         "targets": USE_TESTS,
         "build_scalar_tests": False,
         "build_vector_tests": False,
-        "build_ml_tests": True,
+        "build_ml_tests": False,
         "skip": False,
     },
     "rv32imf_zve32f": {
@@ -47,7 +53,7 @@ TEST_CONFIG = {
     },
 }
 
-TIMEOUT = 200
+TIMEOUT = 200000
 STOP_ON_ERROR = False
 PRINT_STDERR = True
 PRINT_BUILD_STDOUT = False
