@@ -29,7 +29,8 @@ VSET_INSTRS = ["vsetvl", "vsetvli", "vsetivli"]
 DELTA_TRESHOLD = 10
 VSET_TIMING_STAGE = "EX_stage"
 FAST_TIMING_STAGE = "EX_stage"
-SLOW_TIMING_STAGE = "V_EX_stage"
+# SLOW_TIMING_STAGE = "V_EX_LSU_ELM_Pack_substage"
+SLOW_TIMING_STAGE = "EX_stage"
 SCALAR_TIMING_STAGE = "EX_stage"
 
 TRACK_STAGES = [
@@ -37,23 +38,27 @@ TRACK_STAGES = [
     "ID_stage",
     "EX_stage",
     "WB_stage",
+    "V_ID_stage",
     "V_IQ_stage",
     "V_DISP_stage",
-    "V_EX_stage",
-    # "V_WB_stage",
+    "V_EX_LSU_ELM_Pack_substage",
+    # "V_EX_stage",
     "V_RES_stage",
-    # "OFF_IQ_stage",
-    # "OFF_SIG_stage",
+    # "V_CFG_stage",
 ]
 
 PRINT_STAGES = [
+    "IF_stage",
     "ID_stage",
     "EX_stage",
+    "WB_stage",
+    "V_ID_stage",
     "V_IQ_stage",
     "V_DISP_stage",
-    "V_EX_stage",
+    "V_EX_LSU_ELM_Pack_substage",
+    # "V_EX_stage",
     "V_RES_stage",
-    # "OFF_SIG_stage",
+    # "V_CFG_stage",
 ]
 
 MAX_STAGE_NAME_LEN = len(max(PRINT_STAGES, key=len))
@@ -287,18 +292,18 @@ def read_etiss_trace(etiss_base_path: pathlib.Path, e_start: int, e_end: int) ->
 
             row_i = indices[SCALAR_TIMING_STAGE]
 
-            try:
-                instr_name = etiss["instrs"][index]
-                if instr_name in V_SHORT_SIGNAL:
-                    row_i = indices[FAST_TIMING_STAGE]
-                elif instr_name in VSET_INSTRS:
-                    row_i = indices[VSET_TIMING_STAGE]
-                elif instr_name in V_LONG_SIGNAL:
-                    row_i = indices[SLOW_TIMING_STAGE]
-            except Exception as e:
-                print("Exception: " + str(e))
-                print(f"Error index {index}")
-                exit(1)
+            # try:
+            #     instr_name = etiss["instrs"][index]
+            #     if instr_name in V_SHORT_SIGNAL:
+            #         row_i = indices[FAST_TIMING_STAGE]
+            #     elif instr_name in VSET_INSTRS:
+            #         row_i = indices[VSET_TIMING_STAGE]
+            #     elif instr_name in V_LONG_SIGNAL:
+            #         row_i = indices[SLOW_TIMING_STAGE]
+            # except Exception as e:
+            #     print("Exception: " + str(e))
+            #     print(f"Error index {index}")
+            #     exit(1)
 
             for name, stage_index in indices.items():
                 etiss["stage_cycles"][name].append(int(row[stage_index]))

@@ -10,6 +10,7 @@ import config
 from util import check_path, error, info, success, warn
 
 from comparison import compare
+from fastcomparison import compare_fast
 
 
 class BuildType(str):
@@ -327,7 +328,7 @@ def compare_all(argslist: list[tuple[str, int, int, str]], gen_table: bool) -> b
         arch, vlen, vlane_width, target = args
         # Returns CPI ETISS, CPI Verilator, CPI Error in %, Abs sum of differences, OK
         info(fname, f"Compare {target} on {arch} with VLEN {vlen} and VLANE_WIDTH {vlane_width}")
-        cpi_e, cpi_v, cpi_error, abs_sum_diffs, n_instructions, ok_run = compare(arch, vlen, vlane_width, target)
+        cpi_e, cpi_v, cpi_error, abs_sum_diffs, n_instructions, ok_run = compare_fast(arch, vlen, vlane_width, target)
         if ok_run:
             success(fname, f"Comparison results: CPI ETISS {cpi_e:.4f} | CPI RTL {cpi_v:.4f} | Error {cpi_error:.4f}% | ASD {abs_sum_diffs} | ADI {abs_sum_diffs / n_instructions:.4f}")
         else:

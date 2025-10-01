@@ -15,7 +15,15 @@ USE_VLENS = [64, 128, 256]
 USE_VLANE_WIDTHS = [32]
 
 CUSTOM_TARGETS = {
-    "sanitycheck": ["basic_asm", "loadstores"],
+    "sanitycheck": [
+        "basic_asm",
+        "tests",
+        "loadstores",
+        "load_alu_vv_store",
+        "load_alu_vx_store",
+        "load_div_store",
+        "load_macc_vv_store",
+    ],
     "ml_bench": ["tflm_toy", "tflm_aww"],
     "simple_bench": ["rvv_asm_bench"],
 }

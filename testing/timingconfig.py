@@ -28,9 +28,10 @@ LSU = [
     "vl32r_v",
 ]
 
-V_LONG_SIGNAL = LSU + ELEM_VV
 
-V_MOVE_TO_SCALAR = ["vmv_x_s"]
+VWXUNARY0 = ["vmv_x_s", "vcpop_m", "vfirst_m"]
+
+V_LONG_SIGNAL = LSU + VWXUNARY0
 
 INT_ARITH_VMV = ["vmv_v_v", "vmv_v_x", "vmv_v_i"]
 INT_ARITH_VMERGE = ["vmerge_vvm", "vmerge_vxm", "vmerge_vim"]
@@ -206,7 +207,6 @@ V_SHORT_SIGNAL = (
     + INT_ARITH_VMERGE
     + INT_EXT
     + RED_VV
-    + V_MOVE_TO_SCALAR
     + ["vmv_s_x"]
 )
 
