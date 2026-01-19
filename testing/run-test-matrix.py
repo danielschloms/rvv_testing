@@ -37,16 +37,20 @@ WS_PATH = pathlib.Path(WS_PATH_ENV)
 PERFSIM_PRJ_SRC = WS_PATH / "gen_perfsim"
 VERILATOR_PRJ_SRC = WS_PATH / "vicuna2_tinyml_benchmarking"
 TEST_PRJ_SRC = WS_PATH / "etiss_riscv_examples"
-TABLE_DIR = WS_PATH / "rvv_testing" / "comparison" / "table"
+COMPARISON_DIR = WS_PATH / "rvv_testing" / "comparison"
+TABLE_DIR = COMPARISON_DIR / "table"
+RUNTIME_DIR = COMPARISON_DIR / "runtime"
 check_path(WS_PATH)
 check_path(VERILATOR_PRJ_SRC)
 check_path(TEST_PRJ_SRC)
 check_path(PERFSIM_PRJ_SRC)
 check_path(TABLE_DIR)
+check_path(RUNTIME_DIR)
 info(__name__, f"Perfsim Project Source: {PERFSIM_PRJ_SRC}")
 info(__name__, f"Verilator Project Source: {VERILATOR_PRJ_SRC}")
 info(__name__, f"Test Project Source: {TEST_PRJ_SRC}")
 info(__name__, f"Table Directory: {TABLE_DIR}")
+info(__name__, f"Runtime Directory: {RUNTIME_DIR}")
 
 VALID_VLENS = [64, 128, 256, 512, 1024]
 VALID_ARCHS = ["rv32im_zve32x", "rv32imf_zve32f"]
@@ -233,7 +237,17 @@ def run_test(
     run_script_dir = PERFSIM_PRJ_SRC if simulator == "etiss" else VERILATOR_PRJ_SRC
     run_script_path = run_script_dir / run_script_name
 
-    run_args = [run_script_path, arch, str(vlen), str(vlane_width), target]
+    run_args = [
+        run_script_path,
+        "--arch",
+        arch,
+        "--vlen",
+        str(vlen),
+        "--vlane_width",
+        str(vlane_width),
+        "--target",
+        target,
+    ]
     try:
         proc = subprocess.run(
             args=run_args,
@@ -247,6 +261,16 @@ def run_test(
 
     if config.PRINT_TEST_STDOUT and proc.stdout:
         print(proc.stdout)
+
+    stdout_lines = proc.stdout.split("\n")
+    time: str = ""
+    for line in stdout_lines:
+        if "user" in line:
+            time = line.strip().split(" ")[1]
+            with open(RUNTIME_DIR / target, "a", encoding="utf-8") as runtime_file:
+                runtime_file.write(f"{vlen} & {vlane_width} & {time}\n")
+            break
+
     # Check for error
     # TODO: Be able to abort all processes on error?
     if proc.stderr:
@@ -288,7 +312,10 @@ def run_test(
 
 
 def run_all(
-    test_config: dict, run_etiss: bool, run_verilator: bool, n_processes: int
+    test_config: dict,
+    run_etiss: bool,
+    run_verilator: bool,
+    n_processes: int = 1,
 ) -> bool:
     fname = "run_all"
     info(fname, f"Running tests for ETISS: {run_etiss}, Verilator: {run_verilator}")
@@ -319,6 +346,7 @@ def run_all(
 
     return False if False in res else True
 
+
 def compare_all(argslist: list[tuple[str, int, int, str]], gen_table: bool) -> bool:
     ok = True
     results = []
@@ -327,10 +355,24 @@ def compare_all(argslist: list[tuple[str, int, int, str]], gen_table: bool) -> b
     for args in argslist:
         arch, vlen, vlane_width, target = args
         # Returns CPI ETISS, CPI Verilator, CPI Error in %, Abs sum of differences, OK
-        info(fname, f"Compare {target} on {arch} with VLEN {vlen} and VLANE_WIDTH {vlane_width}")
-        cpi_e, cpi_v, cpi_error, abs_sum_diffs, n_instructions, ok_run = compare_fast(arch, vlen, vlane_width, target)
+        info(
+            fname,
+            f"Compare {target} on {arch} with VLEN {vlen} and VLANE_WIDTH {vlane_width}",
+        )
+        cpi_e, cpi_v, cpi_error, abs_sum_diffs, n_instructions, ok_run = compare_fast(
+            arch,
+            vlen,
+            vlane_width,
+            target,
+            keep_traces=False,
+            print_stages=True,
+            write_match=True,
+        )
         if ok_run:
-            success(fname, f"Comparison results: CPI ETISS {cpi_e:.4f} | CPI RTL {cpi_v:.4f} | Error {cpi_error:.4f}% | ASD {abs_sum_diffs} | ADI {abs_sum_diffs / n_instructions:.4f}")
+            success(
+                fname,
+                f"Comparison results: CPI ETISS {cpi_e:.4f} | CPI RTL {cpi_v:.4f} | Error {cpi_error:.4f}% | ASD {abs_sum_diffs} | ADI {abs_sum_diffs / n_instructions:.4f}",
+            )
         else:
             error(fname, "Comparison failed")
         if "_" in target:
@@ -338,7 +380,19 @@ def compare_all(argslist: list[tuple[str, int, int, str]], gen_table: bool) -> b
         if "_" in arch:
             arch = arch.replace("_", "\\_")
         avg_diff_per_instruction = abs_sum_diffs / n_instructions
-        results.append((target, arch, vlen, vlane_width, cpi_e, cpi_v, cpi_error, avg_diff_per_instruction))
+        results.append(
+            (
+                target,
+                arch,
+                vlen,
+                vlane_width,
+                cpi_e,
+                cpi_v,
+                cpi_error,
+                avg_diff_per_instruction,
+                n_instructions,
+            )
+        )
         ok &= ok_run
 
     if gen_table:
@@ -347,14 +401,22 @@ def compare_all(argslist: list[tuple[str, int, int, str]], gen_table: bool) -> b
             table_file.write("\\begin{center}\n")
             table_file.write("\\begin{tabular}{ c c c c c c c }\n")
             table_file.write(
-                "Target & VLEN & VLANE\\_WIDTH & CPI ETISS & CPI Verilator & Error & Avg. Diff. per Instr."
+                "Target & VLEN & VLANE\\_WIDTH & CPI ETISS & CPI Verilator & Error & ADI & # Instrs."
             )
             for result in results:
-                r_target, r_arch, r_vlen, r_vlane_width, r_cpi_e, r_cpi_v, r_error, r_avg_diff_per_inst = (
-                    result
-                )
+                (
+                    r_target,
+                    r_arch,
+                    r_vlen,
+                    r_vlane_width,
+                    r_cpi_e,
+                    r_cpi_v,
+                    r_error,
+                    r_avg_diff_per_inst,
+                    r_n_instructrions,
+                ) = result
                 table_file.write(
-                    f" \\\\\n{r_target} & {r_vlen} & {r_vlane_width} & {r_cpi_e:.4f} & {r_cpi_v:.4f} & {r_error:.4f} \\% & {r_avg_diff_per_inst}"
+                    f" \\\\\n{r_target} & {r_vlen} & {r_vlane_width} & {r_cpi_e:.4f} & {r_cpi_v:.4f} & {r_error:.4f} \\% & {r_avg_diff_per_inst:.4f} & {r_n_instructrions}"
                 )
             table_file.write("\n\\end{tabular}\n\\end{center}\n")
 
@@ -379,6 +441,40 @@ def gen_argslist(test_config: dict) -> list[tuple[str, int, int, str]]:
                     argslist.append((arch, vlen, vlane_width, target))
 
     return argslist
+
+
+def test_sequential(test_config: dict):
+    fname = "test_sequential"
+    arglist = gen_argslist(test_config)
+    ok = True
+    with open(TABLE_DIR / "table_seq.txt", "w", encoding="utf-8") as seq_table:
+        for args in arglist:
+            arch, vlen, vlane_width, target = args
+            pair = [
+                [arch, vlen, vlane_width, target, "etiss"],
+                [arch, vlen, vlane_width, target, "verilator"],
+            ]
+            with mp.Pool(processes=2) as pool:
+                res = pool.starmap(run_test, pair)
+                ok = False if False in res else True
+
+            info(fname, f"Compare pair {arch}, {vlen}, {vlane_width}, {target}")
+            cpi_e, cpi_v, cpi_error, abs_sum_diffs, n_instructions, ok_run = (
+                compare_fast(
+                    arch,
+                    vlen,
+                    vlane_width,
+                    target,
+                    keep_traces=False,
+                    print_stages=False,
+                    write_match=False,
+                )
+            )
+            avg_diff_per_instr = abs_sum_diffs / n_instructions
+            info(fname, f"{vlen} & {vlane_width} & {cpi_e:.4f} & {cpi_v:.4f} & {cpi_error:.4f} % & {avg_diff_per_instr:.4f} & {n_instructions}\n")
+            seq_table.write(
+                f"{vlen} & {vlane_width} & {cpi_e:.4f} & {cpi_v:.4f} & {cpi_error:.4f} % & {avg_diff_per_instr:.4f} & {n_instructions}\n"
+            )
 
 
 def main() -> None:
@@ -415,6 +511,9 @@ def main() -> None:
     parser.add_argument("--ctarget", type=str, required=False)
     # Actual program
     parser.add_argument("--target", type=str, required=False)
+
+    parser.add_argument("--keep_traces", action="store_true")
+    parser.add_argument("--seq", action="store_true")
 
     args = parser.parse_args()
 
@@ -486,17 +585,20 @@ def main() -> None:
             test_config, BuildType(build_type), compiler, build_target, optargs_build
         )
 
-    if run_etiss or run_verilator:
-        if run_all(test_config, run_etiss, run_verilator, 16):
-            success(fname, "All tests passed")
-        else:
-            warn(fname, "Warning: Failing tests")
+    if args.seq:
+        test_sequential(test_config)
+    else:
+        if run_etiss or run_verilator:
+            if run_all(test_config, run_etiss, run_verilator, 31):
+                success(fname, "All tests passed")
+            else:
+                warn(fname, "Warning: Failing tests")
 
-    if args.compare:
-        if compare_all(argslist, args.generate_table):
-            success(fname, "All comparisons correct")
-        else:
-            warn(fname, "Warning: comparison errors")
+        if args.compare:
+            if compare_all(argslist, args.generate_table):
+                success(fname, "All comparisons correct")
+            else:
+                warn(fname, "Warning: comparison errors")
 
     if args.clean_output:
         clean_script_path = pathlib.Path(__file__).parent / "clean-output.sh"

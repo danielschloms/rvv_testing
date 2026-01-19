@@ -1,11 +1,8 @@
 import pathlib
-import csv
 import os
 
 from comp_util import print_info, match_length
-from util import check_path
-from timingconfig import V_LONG_SIGNAL
-import decoder
+from util import check_path, error
 
 START_LABEL = "address_match_start"
 END_LABEL = "address_match_end"
@@ -15,6 +12,7 @@ def read_addresses(
     target_sw: str, verilator_dump_dir: pathlib.Path, etiss_dump_dir: pathlib.Path
 ) -> tuple[dict, bool]:
     """Returns a dictionary with start and end addresses."""
+    fname = "CMP: read_addresses"
     verilator_start = 0
     verilator_end = 0
     etiss_start = 0
@@ -34,10 +32,10 @@ def read_addresses(
         print_info(f"(AddressMatcher) Could not find {target_sw} Verilator dump")
         ok = False
 
-    if (verilator_start == 0):
-        print("Error Verilator start")
-    if (verilator_end == 0):
-        print("Error Verilator end")
+    if verilator_start == 0:
+        error(fname, "Error Verilator start")
+    if verilator_end == 0:
+        error(fname, "Error Verilator end")
 
     etiss_dump_file = f"{etiss_dump_dir}/{target_sw}.dump"
     try:
@@ -51,15 +49,15 @@ def read_addresses(
         print_info(f"(AddressMatcher) Could not find {target_sw} Verilator dump")
         ok = False
 
-    if (etiss_start == 0):
-        print("Error etiss start")
-    if (etiss_end == 0):
-        print("Error etiss end")
+    if etiss_start == 0:
+        error(fname, "Error ETISS start")
+    if etiss_end == 0:
+        error(fname, "Error ETISS end")
 
-    print(f"(AddressMatcher) RTL Start Address: {verilator_start:08x}")
-    print(f"(AddressMatcher) RTL End Address: {verilator_end:08x}")
-    print(f"(AddressMatcher) ETISS Start Address: {etiss_start:08x}")
-    print(f"(AddressMatcher) ETISS End Address: {etiss_end:08x}")
+    # print(f"(AddressMatcher) RTL Start Address: {verilator_start:08x}")
+    # print(f"(AddressMatcher) RTL End Address: {verilator_end:08x}")
+    # print(f"(AddressMatcher) ETISS Start Address: {etiss_start:08x}")
+    # print(f"(AddressMatcher) ETISS End Address: {etiss_end:08x}")
 
     return {
         "e_start": etiss_start,
@@ -105,6 +103,8 @@ def analyze_traces(
     match_path: pathlib.Path,
     addresses: dict[str, int],
     write_match: bool,
+    keep_traces: bool = False,
+    print_stages: bool = True,
 ) -> bool:
 
     verilator_trace_path = verilator_base_path / f"{target_sw}_trace.txt"
@@ -121,7 +121,7 @@ def analyze_traces(
 
         stage_line = etiss_timing.readline()
         stages = parse_stages(stage_line)
-        print_stages = stages.keys()
+        stages_to_print = stages.keys() if print_stages else []
 
         # Skip first line (ETISS trace skips first instruction)
         etiss_timing.readline()
@@ -129,7 +129,7 @@ def analyze_traces(
 
         timing_stage_index = stages["EX_stg"]
 
-        # print_stages = [
+        # stages_to_print = [
         #     "IF_stage",
         #     "ID_stage",
         #     "EX_stage",
@@ -181,10 +181,10 @@ def analyze_traces(
         # Analyze
         while True:
             timing_line = etiss_timing.readline()
-            if timing_line[0] == "I":
-                continue
             if not timing_line:
                 break
+            if timing_line[0] == "I":
+                continue
 
             etiss_trace_line = etiss_trace.readline()
             verilator_trace_line = verilator_trace.readline()
@@ -216,7 +216,7 @@ def analyze_traces(
                 stage_str = "".join(
                     [
                         f"{stage}: {timing_split[stages[stage]]} | "
-                        for stage in print_stages
+                        for stage in stages_to_print
                     ]
                 )
                 match_file.write(stage_str + "\n")
@@ -226,11 +226,24 @@ def analyze_traces(
         cpi_e = total_cycles_e / n_instrs
         cpi_v = total_cycles_v / n_instrs
         cpi_error_pct = ((cpi_e / cpi_v) - 1) * 100
-        return (cpi_e, cpi_v, cpi_error_pct, sum_diff, n_instrs, True)
+
+    if not keep_traces:
+        # Delete traces
+        verilator_trace_path.unlink()
+        etiss_trace_path.unlink()
+        etiss_timing_path.unlink()
+
+    return (cpi_e, cpi_v, cpi_error_pct, sum_diff, n_instrs, True)
 
 
 def compare_fast(
-    arch, vlen, vlane_width, target_sw
+    arch,
+    vlen,
+    vlane_width,
+    target_sw,
+    keep_traces,
+    print_stages,
+    write_match
 ) -> tuple[float, float, float, int, int, bool]:
     zvl_string = f"zvl{vlen}b"
     vlane_string = f"vlane{vlane_width}"
@@ -280,5 +293,12 @@ def compare_fast(
     match_path.parent.mkdir(parents=True, exist_ok=True)
 
     return analyze_traces(
-        target_sw, etiss_arch_path, verilator_arch_path, match_path, addresses, True
+        target_sw,
+        etiss_arch_path,
+        verilator_arch_path,
+        match_path,
+        addresses,
+        write_match=write_match,
+        keep_traces=keep_traces,
+        print_stages=print_stages,
     )
