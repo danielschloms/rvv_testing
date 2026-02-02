@@ -1,6 +1,3 @@
-VALID_VLENS = [64, 128, 256]
-VALID_VLANE_WIDTHS = [32, 128, 512]
-
 ML_INT = ["toycar_int8", "aww_int8"]
 PROGRAMS_INT = ["cpptest"] + ML_INT
 REQ_VECTOR_INT = ["basic_asm", "rvv_asm_bench"]
@@ -10,10 +7,9 @@ PROGRAMS_FP = [] + ML_FLOAT
 REQ_VECTOR_FP = []
 
 # Change this to the array of tests you want to use
-USE_TESTS = ["rvv_asm_bench"]
-USE_VLENS = [64, 128, 256, 512, 1024]
-USE_VLANE_WIDTHS = [32, 64, 128]
-USE_VMEM_WIDTHS = [32, 64]
+USE_VLENS = [64, 256, 1024]
+USE_VLANE_WIDTHS = [32, 64]
+# USE_VMEM_WIDTHS = [32, 64]
 
 SANITYCHECK_TESTS = [
     "load_alu_vv_store",
@@ -22,15 +18,13 @@ SANITYCHECK_TESTS = [
     "load_red_store",
     "load_store",
     "vmv_v_i_store",
-    # "vmv_red_vmv",
 ]
 
-ML_BENCH_TESTS = ["tflm_toy"]#, "tflm_aww"]#, "tflm_vww"]
+ML_BENCH_TESTS = ["tflm_toy", "tflm_aww", "tflm_vww"]
+
 CUSTOM_TARGETS = {
     "sanitycheck": SANITYCHECK_TESTS,
     "ml_bench": ML_BENCH_TESTS,
-    "simple_bench": ["rvv_asm_bench"],
-    "thesis_results": SANITYCHECK_TESTS + ML_BENCH_TESTS,
 }
 
 TEST_CONFIG = {
@@ -38,33 +32,24 @@ TEST_CONFIG = {
         "abi": "ilp32",
         "vlens": USE_VLENS,
         "vlane_widths": USE_VLANE_WIDTHS,
-        "vmem_widths": USE_VMEM_WIDTHS,
-        "targets": USE_TESTS,
-        "build_scalar_tests": False,
-        "build_vector_tests": True,
-        "build_ml_tests": True,
+        # "vmem_widths": USE_VMEM_WIDTHS,
+        "targets": [],
         "skip": True,
     },
     "rv32im_zve32x": {
         "abi": "ilp32",
         "vlens": USE_VLENS,
         "vlane_widths": USE_VLANE_WIDTHS,
-        "vmem_widths": USE_VMEM_WIDTHS,
-        "targets": USE_TESTS,
-        "build_scalar_tests": False,
-        "build_vector_tests": False,
-        "build_ml_tests": False,
+        # "vmem_widths": USE_VMEM_WIDTHS,
+        "targets": [],
         "skip": False,
     },
     "rv32imf_zve32f": {
         "abi": "ilp32f",
         "vlens": USE_VLENS,
         "vlane_widths": USE_VLANE_WIDTHS,
-        "vmem_widths": USE_VMEM_WIDTHS,
-        "targets": USE_TESTS,
-        "build_scalar_tests": False,
-        "build_vector_tests": True,
-        "build_ml_tests": False,
+        # "vmem_widths": USE_VMEM_WIDTHS,
+        "targets": [],
         "skip": True,
     },
 }

@@ -7,6 +7,12 @@ from util import check_path, error
 START_LABEL = "address_match_start"
 END_LABEL = "address_match_end"
 
+SRC_DIR = pathlib.Path(__file__).parent.resolve()
+COMPARISON_PRJ_DIR = SRC_DIR.parent
+PROJECT_ROOT_DIR = COMPARISON_PRJ_DIR.parent
+VICUNA_DIR = PROJECT_ROOT_DIR / "Vicuna2"
+PERFSIM_DIR = PROJECT_ROOT_DIR / "Perfsim"
+
 
 def read_addresses(
     target_sw: str, verilator_dump_dir: pathlib.Path, etiss_dump_dir: pathlib.Path
@@ -105,7 +111,7 @@ def analyze_traces(
     write_match: bool,
     keep_traces: bool = False,
     print_stages: bool = True,
-) -> bool:
+) -> tuple[float, float, float, int, int, bool]:
 
     verilator_trace_path = verilator_base_path / f"{target_sw}_trace.txt"
     etiss_trace_path = etiss_base_path / f"{target_sw}_trace.txt"
@@ -237,28 +243,14 @@ def analyze_traces(
 
 
 def compare_fast(
-    arch,
-    vlen,
-    vlane_width,
-    target_sw,
-    keep_traces,
-    print_stages,
-    write_match
+    arch, vlen, vlane_width, target_sw, keep_traces, print_stages, write_match
 ) -> tuple[float, float, float, int, int, bool]:
     zvl_string = f"zvl{vlen}b"
     vlane_string = f"vlane{vlane_width}"
     full_arch_subpath = pathlib.Path(arch) / zvl_string / vlane_string
-    verilator_dump_dir = (
-        pathlib.Path(os.environ["WS_PATH"])
-        / "vicuna2_tinyml_benchmarking"
-        / "build_from_other"
-        / arch
-        / zvl_string
-        / "dump"
-    )
+    verilator_dump_dir = VICUNA_DIR / "build_from_other" / arch / zvl_string / "dump"
     etiss_dump_dir = (
-        pathlib.Path(os.environ["WS_PATH"])
-        / "gen_perfsim"
+        PERFSIM_DIR
         / "target_sw"
         / "examples"
         / "Vicuna"

@@ -2,14 +2,11 @@
 
 import argparse
 import multiprocessing as mp
-import os
 import pathlib
 import subprocess
 
 import config
 from util import check_path, error, info, success, warn
-
-from comparison import compare
 from fastcomparison import compare_fast
 
 
@@ -27,56 +24,30 @@ VERILATOR_SUCCESS_STRING = "Output Match"
 VERILATOR_FAIL_STRING = "Output Mismatch"
 VERILATOR_INTERRUPT_STRING = "Interrupt Called"
 
-WS_PATH_ENV_NAME = "WS_PATH"
-WS_PATH_ENV = os.getenv(WS_PATH_ENV_NAME)
-if not WS_PATH_ENV:
-    error(__name__, f'Environment Variable "{WS_PATH_ENV_NAME}" not set')
-    exit()
+SRC_DIR = pathlib.Path(__file__).parent.resolve()
+COMPARISON_PRJ_DIR = SRC_DIR.parent
+PROJECT_ROOT_DIR = COMPARISON_PRJ_DIR.parent
 
-WS_PATH = pathlib.Path(WS_PATH_ENV)
-PERFSIM_PRJ_SRC = WS_PATH / "gen_perfsim"
-VERILATOR_PRJ_SRC = WS_PATH / "vicuna2_tinyml_benchmarking"
-TEST_PRJ_SRC = WS_PATH / "etiss_riscv_examples"
-COMPARISON_DIR = WS_PATH / "rvv_testing" / "comparison"
+PERFSIM_PRJ_SRC = PROJECT_ROOT_DIR / "Perfsim"
+VERILATOR_PRJ_SRC = PROJECT_ROOT_DIR / "Vicuna2"
+TEST_PRJ_SRC = PROJECT_ROOT_DIR / "RISCV_Programs"
+COMPARISON_DIR = COMPARISON_PRJ_DIR / "comparison"
 TABLE_DIR = COMPARISON_DIR / "table"
-RUNTIME_DIR = COMPARISON_DIR / "runtime"
-check_path(WS_PATH)
+# RUNTIME_DIR = COMPARISON_DIR / "runtime"
+
+check_path(PROJECT_ROOT_DIR)
 check_path(VERILATOR_PRJ_SRC)
 check_path(TEST_PRJ_SRC)
 check_path(PERFSIM_PRJ_SRC)
-check_path(TABLE_DIR)
-check_path(RUNTIME_DIR)
+# check_path(RUNTIME_DIR)
 info(__name__, f"Perfsim Project Source: {PERFSIM_PRJ_SRC}")
 info(__name__, f"Verilator Project Source: {VERILATOR_PRJ_SRC}")
 info(__name__, f"Test Project Source: {TEST_PRJ_SRC}")
 info(__name__, f"Table Directory: {TABLE_DIR}")
-info(__name__, f"Runtime Directory: {RUNTIME_DIR}")
+# info(__name__, f"Runtime Directory: {RUNTIME_DIR}")
 
 VALID_VLENS = [64, 128, 256, 512, 1024]
-VALID_ARCHS = ["rv32im_zve32x", "rv32imf_zve32f"]
-ARCH_INFO = {
-    "rv32im_zicsr": {
-        "abi": "ilp32",
-        "scalar_only": True,
-        "has_vector_int": False,
-        "has_scalar_float": False,
-        "has_vector_float": False,
-    },
-    "rv32im_zve32x": {
-        "abi": "ilp32",
-        "scalar_only": False,
-        "has_vector_int": True,
-        "has_scalar_float": False,
-        "has_vector_float": False,
-    },
-    "rv32imf_zve32f": {
-        "abi": "ilp32f",
-        "scalar_only": False,
-        "has_vector_int": True,
-        "has_scalar_float": True,
-        "has_vector_float": True,
-    },
-}
+VALID_ARCHS = ["rv32im_zicsr", "rv32im_zve32x", "rv32imf_zve32f"]
 
 VALID_VLANE_WIDTHS = [32, 64, 128, 256, 512]
 VLANE_WIDTH_COMBINATIONS = {
@@ -87,10 +58,6 @@ VLANE_WIDTH_COMBINATIONS = {
     512: [32, 64, 128, 256],
     1024: [32, 64, 128, 256, 512],
 }
-
-SANITY_CHECK = ["basic_asm", "cpptest"]
-PROGRAMS = ["toycar_int8"]
-
 
 def build_rtl(arch: str, vlen: int, vlane_width: int, optargs: list[str]) -> bool:
     fname = "build_rtl"
@@ -262,14 +229,14 @@ def run_test(
     if config.PRINT_TEST_STDOUT and proc.stdout:
         print(proc.stdout)
 
-    stdout_lines = proc.stdout.split("\n")
-    time: str = ""
-    for line in stdout_lines:
-        if "user" in line:
-            time = line.strip().split(" ")[1]
-            with open(RUNTIME_DIR / target, "a", encoding="utf-8") as runtime_file:
-                runtime_file.write(f"{vlen} & {vlane_width} & {time}\n")
-            break
+    # stdout_lines = proc.stdout.split("\n")
+    # time: str = ""
+    # for line in stdout_lines:
+    #     if "user" in line:
+    #         time = line.strip().split(" ")[1]
+    #         with open(RUNTIME_DIR / target, "a", encoding="utf-8") as runtime_file:
+    #             runtime_file.write(f"{vlen} & {vlane_width} & {time}\n")
+    #         break
 
     # Check for error
     # TODO: Be able to abort all processes on error?
@@ -471,7 +438,10 @@ def test_sequential(test_config: dict):
                 )
             )
             avg_diff_per_instr = abs_sum_diffs / n_instructions
-            info(fname, f"{vlen} & {vlane_width} & {cpi_e:.4f} & {cpi_v:.4f} & {cpi_error:.4f} % & {avg_diff_per_instr:.4f} & {n_instructions}\n")
+            info(
+                fname,
+                f"{vlen} & {vlane_width} & {cpi_e:.4f} & {cpi_v:.4f} & {cpi_error:.4f} % & {avg_diff_per_instr:.4f} & {n_instructions}\n",
+            )
             seq_table.write(
                 f"{vlen} & {vlane_width} & {cpi_e:.4f} & {cpi_v:.4f} & {cpi_error:.4f} % & {avg_diff_per_instr:.4f} & {n_instructions}\n"
             )
@@ -484,7 +454,7 @@ def main() -> None:
         description="Builds RVV Verilator models & tests and runs them",
         epilog="TODO",
     )
-    parser.add_argument("-a", "--all", action="store_true")
+
     parser.add_argument("-r", "--build_rtl", action="store_true")
     parser.add_argument("-t", "--build_tests", action="store_true")
     parser.add_argument("-gt", "--generate_table", action="store_true")
@@ -507,10 +477,11 @@ def main() -> None:
     parser.add_argument("--compiler", type=str, required=False)
     parser.add_argument("--trace", action="store_true")
 
-    # CMake build target
-    parser.add_argument("--ctarget", type=str, required=False)
+    mutex_target_group = parser.add_mutually_exclusive_group(required=True)
+    # CMake custom build target
+    mutex_target_group.add_argument("--ctarget", type=str)
     # Actual program
-    parser.add_argument("--target", type=str, required=False)
+    mutex_target_group.add_argument("--target", type=str)
 
     parser.add_argument("--keep_traces", action="store_true")
     parser.add_argument("--seq", action="store_true")
@@ -540,28 +511,12 @@ def main() -> None:
         optargs_rtl.append("--clean")
 
     test_config = config.TEST_CONFIG
-    if args.all:
-        test_config = {
-            arch: {
-                "abi": ARCH_INFO[arch]["abi"],
-                "vlens": VALID_VLENS,
-                "vlane_widths": VALID_VLANE_WIDTHS,
-                "targets": config.PROGRAMS_INT
-                + (config.REQ_VECTOR_INT if ARCH_INFO[arch]["has_vector_int"] else [])
-                + (config.PROGRAMS_FP if ARCH_INFO[arch]["has_scalar_float"] else [])
-                + (config.REQ_VECTOR_FP if ARCH_INFO[arch]["has_vector_float"] else []),
-                "build_scalar_tests": True,  # TODO
-                "build_vector_tests": True,
-                "build_ml_tests": True,
-                "skip": False,
-            }
-            for arch in VALID_ARCHS
-        }
 
     if args.ctarget:
         for arch in test_config.values():
             arch["targets"] = config.CUSTOM_TARGETS[args.ctarget]
         build_target = args.ctarget
+
     if args.target:
         for arch in test_config.values():
             arch["targets"] = [args.target]

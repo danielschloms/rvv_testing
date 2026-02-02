@@ -5,6 +5,7 @@ import pathlib
 import subprocess
 import multiprocessing as mp
 
+# TODO: remove WS_PATH stuff
 WS_PATH_ENV_NAME = "WS_PATH"
 WS_PATH_ENV = os.getenv(WS_PATH_ENV_NAME)
 if not WS_PATH_ENV:
