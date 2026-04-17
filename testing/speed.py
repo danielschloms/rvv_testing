@@ -13,8 +13,10 @@ if not WS_PATH_ENV:
     exit()
 
 WS_PATH = pathlib.Path(WS_PATH_ENV)
-PERFSIM_PRJ_SRC = WS_PATH / "gen_perfsim"
-VERILATOR_PRJ_SRC = WS_PATH / "vicuna2_tinyml_benchmarking"
+PERFSIM_PRJ_SRC = WS_PATH / "Perfsim"
+VERILATOR_PRJ_SRC = WS_PATH / "Vicuna2"
+
+# TODO: does not exit!
 QEMU_PRJ_SRC = WS_PATH / "qemu-testing"
 
 INSTR_COUNT = {
@@ -38,7 +40,7 @@ INSTR_COUNT = {
     },
 }
 
-N_RUNS = 10
+N_RUNS = 1
 
 
 def run_etiss(arch, vlen, target, enable_perf: bool) -> float:
@@ -127,21 +129,21 @@ def main():
 
     for target in targets:
         for vlen in vlens:
-            res_q = []
+            # res_q = []
             res_e = []
             res_e_perf = []
             for i in range(N_RUNS):
-                res_q.append(run_qemu(arch, vlen, target))
+                # res_q.append(run_qemu(arch, vlen, target))
                 res_e.append(run_etiss(arch, vlen, target, False))
                 res_e_perf.append(run_etiss(arch, vlen, target, True))
 
             instr_cnt = INSTR_COUNT[target][vlen]
 
-            avg_time_q = sum(res_q) / N_RUNS
-            avg_mips_q = (instr_cnt / avg_time_q) / 1000000
-            print(
-                f"{target} & QEMU & {vlen} & - & {avg_time_q:.4f}s & {avg_mips_q:.4f} & {instr_cnt}"
-            )
+            # avg_time_q = sum(res_q) / N_RUNS
+            # avg_mips_q = (instr_cnt / avg_time_q) / 1000000
+            # print(
+            #     f"{target} & QEMU & {vlen} & - & {avg_time_q:.4f}s & {avg_mips_q:.4f} & {instr_cnt}"
+            # )
 
             avg_time_e = sum(res_e) / N_RUNS
             avg_mips_e = (instr_cnt / avg_time_e) / 1000000
@@ -155,13 +157,13 @@ def main():
                 f"{target} & ETISS + Perf. Est. & {vlen} & - & {avg_time_e_perf:.4f}s & {avg_mips_e_perf:.4f} & {instr_cnt}"
             )
 
-            for vlane_width in vlane_widths:
-                if vlane_width > vlen / 2:
-                    continue
+            # for vlane_width in vlane_widths:
+            #     if vlane_width > vlen / 2:
+            #         continue
 
-                time_v = run_verilator(arch, vlen, vlane_width, target)
-                mips_v = (instr_cnt / time_v) / 1000000
-                print(f"{target} & Verilator & {vlen} & {vlane_width} & {time_v:.4f} s & {mips_v:.4f} & {instr_cnt} \\")
+            #     time_v = run_verilator(arch, vlen, vlane_width, target)
+            #     mips_v = (instr_cnt / time_v) / 1000000
+            #     print(f"{target} & Verilator & {vlen} & {vlane_width} & {time_v:.4f} s & {mips_v:.4f} & {instr_cnt} \\")
 
             # with mp.Pool(processes=32) as pool:
             # args_e = [(arch, vlen, target) for i in range(N_RUNS)]
